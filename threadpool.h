@@ -7,8 +7,19 @@
 
 #include "queue.h"
 
+// Macro to reduce clutter; calls a pthread function and reports failure whenever the call to pthreads fails
+// As a bonus, pthread calls now stand out of the rest of the code if macro uses are highlighted
+#define pthread_safe(thing) \
+    do { \
+        int err = thing; \
+        if (err != 0) { \
+            failure (err, "pthreads call failed: " #thing); \
+        } \
+    } while(0)
+
+
 typedef struct runnable {
-    void (*function)(void *, size_t);
+    void (*function)(void *, size_t); // Pointer to function: void function(void *arg, size_t argsz)
     void *arg;
     size_t argsz;
 } runnable_t;
