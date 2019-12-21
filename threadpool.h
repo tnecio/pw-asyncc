@@ -28,6 +28,8 @@ typedef struct thread_pool {
     pthread_t *threads;
     size_t size;
     volatile bool keep_working;
+    volatile bool accepts_work;
+    pthread_cond_t work_finished; // TODO check those volatiles
     pthread_cond_t stg_to_do_cond;
     pthread_mutex_t jobs_to_do_mutex;
     size_t jobs_to_do_counter;
@@ -38,7 +40,11 @@ typedef struct thread_pool {
 
 int thread_pool_init(thread_pool_t *pool, size_t pool_size);
 
+// Waits for all jobs to finish and then destroys the pool
 void thread_pool_destroy(thread_pool_t *pool);
+
+// Destroys thread pool discarding those jobs that have not yet started running
+int thread_pool_destroy_fast(thread_pool_t *pool);
 
 int defer(thread_pool_t *pool, runnable_t runnable);
 

@@ -19,4 +19,8 @@ include_directories(include)
 add_library(asyncc STATIC threadpool.c future.c queue.c err.c)
 add_subdirectory(test)
 
+add_executable(macierz matrix.c)
+
+add_executable(silnia factorial.c)
+
 install(TARGETS asyncc DESTINATION .)
