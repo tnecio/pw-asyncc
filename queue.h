@@ -20,14 +20,20 @@ typedef struct queue {
     queue_node_t *last;
 } queue_t;
 
+// Initialise queue and return pointer to it (NULL on error)
 queue_t *queue_init();
 
+// Destroy the queue.
 void queue_destroy(queue_t *queue);
 
-void queue_push(queue_t *queue, void *element);
+// Push element pointer to queue.
+// Return error code, 0 on success
+int queue_push(queue_t *queue, void *element);
 
-void *queue_pop(queue_t *queue); // Returns NULL on empty queue
+// Pops element pointer from the queue (NULL on error, or if queue is empty)
+void *queue_pop(queue_t *queue);
 
+// Returns true if queue is empty
 bool queue_empty(queue_t *queue);
 
 #endif //_QUEUE_H_

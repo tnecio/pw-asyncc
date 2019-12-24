@@ -5,18 +5,8 @@
 #include <stdbool.h> // TODO: niedozwolony plik nagłówkowy
 #include <pthread.h>
 
+#include "err.h"
 #include "queue.h"
-
-// Macro to reduce clutter; calls a pthread function and reports failure whenever the call to pthreads fails
-// As a bonus, pthread calls now stand out of the rest of the code if macro uses are highlighted
-#define pthread_safe(thing) \
-    do { \
-        int err = thing; \
-        if (err != 0) { \
-            failure (err, "pthreads call failed: " #thing); \
-        } \
-    } while(0)
-
 
 typedef struct runnable {
     void (*function)(void *, size_t); // Pointer to function: void function(void *arg, size_t argsz)
@@ -37,15 +27,23 @@ typedef struct thread_pool {
     queue_t *jobqueue;
 } thread_pool_t;
 
-
+// Initialises the threadpool of `pool_size` threads in memory pointed to by `pool`
+// Returns error code, or 0 on success
 int thread_pool_init(thread_pool_t *pool, size_t pool_size);
 
-// Waits for all jobs to finish and then destroys the pool
+// Waits for all jobs to finish and then destroys the pool (or does its best to do so)
+// Ignores silently all pthread errors
+// `pool` must not be NULL
 void thread_pool_destroy(thread_pool_t *pool);
 
 // Destroys thread pool discarding those jobs that have not yet started running
-int thread_pool_destroy_fast(thread_pool_t *pool);
+// Ignores silently all pthread errors
+// `pool` must not be NULL
+void thread_pool_destroy_fast(thread_pool_t *pool);
 
+// Defers a job described by `runnable` to thread pool in `pool`
+// Returns error code, or 0 on success
+// If running a job encounters an error in pthreads, it silently ignores it
 int defer(thread_pool_t *pool, runnable_t runnable);
 
 #endif

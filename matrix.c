@@ -1,4 +1,5 @@
 #pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunknown-pragmas"
 #pragma ide diagnostic ignored "cert-err34-c"
 //
 // Created by tom on 06.12.19.
@@ -36,9 +37,7 @@ int main() {
     job_description_t *jobs_matrix = (job_description_t *) calloc(k * n, sizeof(job_description_t));
 
     thread_pool_t pool;
-    if (thread_pool_init(&pool, 4)) {
-        failure(0, "Thread pool initialisation failed");
-    }
+    silent_on_err(thread_pool_init(&pool, 4));
 
     int v, t;
     matrix_cell_t cell;

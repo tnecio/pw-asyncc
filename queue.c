@@ -5,7 +5,7 @@
 #include <stdlib.h>
 
 #include "queue.h"
-
+#include "err.h"
 
 queue_t *queue_init() {
     queue_t *res = (queue_t *) calloc(1, sizeof(queue_t));
@@ -22,8 +22,12 @@ void queue_destroy(queue_t *queue) {
     free(queue);
 }
 
-void queue_push(queue_t *queue, void *element) {
+int queue_push(queue_t *queue, void *element) {
     queue_node_t *node = (queue_node_t *) calloc(1, sizeof(queue_node_t));
+    if (node == NULL) {
+        return MEMORY_ALLOCATION_ERROR;
+    }
+
     node->element = element;
     node->next = NULL;
     node->prev = queue->last;
@@ -36,6 +40,8 @@ void queue_push(queue_t *queue, void *element) {
 
     queue->last = node;
     queue->size++;
+
+    return 0;
 }
 
 void *queue_pop(queue_t *queue) {
