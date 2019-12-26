@@ -1,7 +1,3 @@
-//
-// Created by tom on 04.12.19.
-//
-
 #ifndef _QUEUE_H_
 #define _QUEUE_H_
 
@@ -11,7 +7,6 @@
 typedef struct queue_node {
     void *element; // Pointer to data stored at this node
     struct queue_node *next;
-    struct queue_node *prev;
 } queue_node_t;
 
 typedef struct queue {
@@ -30,10 +25,10 @@ void queue_destroy(queue_t *queue);
 // Return error code, 0 on success
 int queue_push(queue_t *queue, void *element);
 
-// Pops element pointer from the queue (NULL on error, or if queue is empty)
+// Pops element pointer from the queue (NULL if queue is empty)
 void *queue_pop(queue_t *queue);
 
-// Returns true if queue is empty
+// Returns whether queue is empty
 bool queue_empty(queue_t *queue);
 
 #endif //_QUEUE_H_

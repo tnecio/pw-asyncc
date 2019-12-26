@@ -4,52 +4,35 @@
 
 #include "threadpool.h"
 
-// This is the function that describes the whole life of a worker thread
+// This is the function that describes the worker thread
 // On error: silently ignore and hope for the best
-void *worker_life(void *parent_pool_) {
+// Always returns NULL
+void *worker(void *parent_pool_) {
+    // Get pointer to the thread pool
     thread_pool_t *parent_pool = (thread_pool_t *) parent_pool_;
+
     runnable_t *job;
-
-    while (parent_pool->keep_working) {
-        // Wait till there is something to do
-        silent_on_err(pthread_mutex_lock(&parent_pool->jobs_to_do_mutex));
-
-        while(parent_pool->jobs_to_do_counter == 0 && parent_pool->keep_working) {
-            silent_on_err(pthread_cond_wait(&parent_pool->stg_to_do_cond, &parent_pool->jobs_to_do_mutex));
-        }
-        // If got out on jobs_to_do_counter > 0: book yourself a job
-        // If got out on !keep_working: jobs don't matter anymore for anyone
-        (parent_pool->jobs_to_do_counter)--;
-
-        // Signal that work is finished to the pool-destroying thread if we are the last worker to run
-        if (parent_pool->jobs_to_do_counter == 0 && !parent_pool->accepts_work) {
-            silent_on_err(pthread_cond_signal(&parent_pool->work_finished));
-        }
-        silent_on_err(pthread_mutex_unlock(&parent_pool->jobs_to_do_mutex));
-
-
-        if (!parent_pool->keep_working) {
-            // pool_destroy could have been called when we were waiting
-            // yes, there could be actual jobs in jobqueue, they will be lost purposefully on pool_destroy
-            break;
+    for (;;) {
+        // Wait until there is something to do
+        silent_on_err(pthread_mutex_lock(&parent_pool->jobs_mutex));
+        while (queue_empty(parent_pool->jobqueue) && parent_pool->keep_working) {
+            silent_on_err(pthread_cond_wait(&parent_pool->stg_to_do_cond, &parent_pool->jobs_mutex));
         }
 
-        silent_on_err(pthread_mutex_lock(&parent_pool->jobqueue_mutex));
-        // We know for 100% there is a job for us because:
-        // 1. If we are called from `pool_destroy` then keep_working MUST already be false, so we broke earlier
-        // 2. So, we are called from `defer` and we know each defer puts one job into queue and increments jobs_to_do
-        // that we just decremented (and we did this in a mutex so we could not decrement it together with some other
-        // thread.
+        // "Book" a job (or get NULL if we "got out" on `keep_working` being false)
         job = queue_pop(parent_pool->jobqueue);
-        silent_on_err(pthread_mutex_unlock(&parent_pool->jobqueue_mutex));
+        silent_on_err(pthread_mutex_unlock(&parent_pool->jobs_mutex));
 
-        (job->function)(job->arg, job->argsz);
+        if (job == NULL) { // no job -> !`keep_working` -> time to finish work
+            return NULL;
+        } // else: job was initialised, time to do it
+        job->function(job->arg, job->argsz);
         free(job); // Job must have been allocated in `defer`
     }
-
-    return NULL;
 }
 
+// Initialises the threadpool of `pool_size` threads in memory pointed to by `pool`
+// Returns error code, or 0 on success
 int thread_pool_init(thread_pool_t *pool, size_t pool_size) {
     if (pool == NULL) {
         return NULL_POINTER_ERROR;
@@ -57,106 +40,72 @@ int thread_pool_init(thread_pool_t *pool, size_t pool_size) {
         return ZERO_THREADS_ERROR;
     }
 
-    pool->threads = (pthread_t *) calloc(pool_size, sizeof(pthread_t)); // TODO: zoptymalizować calloci
+    pool->threads = (pthread_t *) calloc(pool_size, sizeof(pthread_t));
     if (pool->threads == NULL) {
         return MEMORY_ALLOCATION_ERROR;
     }
+    pool->thread_count = pool_size;
 
-    pool->size = pool_size;
-    pool->keep_working = true;
-    pool->accepts_work = true;
-    return_on_err(pthread_cond_init(&pool->work_finished, NULL));
+    return_on_err(pthread_mutex_init(&pool->jobs_mutex, NULL));
     return_on_err(pthread_cond_init(&pool->stg_to_do_cond, NULL));
-    return_on_err(pthread_mutex_init(&pool->jobs_to_do_mutex, NULL));
-    pool->jobs_to_do_counter = 0;
-    return_on_err(pthread_mutex_init(&pool->jobqueue_mutex, NULL));
+
+    pool->keep_working = true;
     pool->jobqueue = queue_init();
 
     for (size_t i = 0; i < pool_size; i++) {
-        return_on_err(pthread_create(&pool->threads[i], NULL, worker_life, pool));
+        return_on_err(pthread_create(&pool->threads[i], NULL, worker, pool));
     }
 
     return 0;
 }
 
-void thread_pool_destroy_fast(struct thread_pool *pool) {
-    pool->accepts_work = false;
-    // Signal all threads it's time for suicide
+// Waits for all jobs to finish and then destroys the pool
+// Ignores silently all pthread errors
+// `pool` must not be NULL
+void thread_pool_destroy(thread_pool_t *pool) {
+    silent_on_err(pthread_mutex_lock(&pool->jobs_mutex));
     pool->keep_working = false;
 
-    // Call all workers to check that they have something to do
-    silent_on_err(pthread_mutex_lock(&pool->jobs_to_do_mutex));
+    // Signal waiting threads to check that they can stop
     silent_on_err(pthread_cond_broadcast(&pool->stg_to_do_cond));
-    silent_on_err(pthread_mutex_unlock(&pool->jobs_to_do_mutex));
+    silent_on_err(pthread_mutex_unlock(&pool->jobs_mutex));
 
-    // Wait till all workers die
-    void *res = NULL;
-    for (size_t i = 0; i < pool->size; i++) {
-        silent_on_err(pthread_join(pool->threads[i], res));
+    // Wait until all workers stop
+    for (size_t i = 0; i < pool->thread_count; i++) {
+        silent_on_err(pthread_join(pool->threads[i], NULL));
     }
 
     // Free allocated memory
-    runnable_t *runnable = NULL;
-    while (!queue_empty(pool->jobqueue)) {
-        runnable = queue_pop(pool->jobqueue);
-        free(runnable);
-    }
-    queue_destroy(pool->jobqueue);
+    silent_on_err(pthread_mutex_destroy(&pool->jobs_mutex));
     silent_on_err(pthread_cond_destroy(&pool->stg_to_do_cond));
-    silent_on_err(pthread_cond_destroy(&pool->work_finished));
-    silent_on_err(pthread_mutex_destroy(&pool->jobqueue_mutex));
-    silent_on_err(pthread_mutex_destroy(&pool->jobs_to_do_mutex));
+    queue_destroy(pool->jobqueue);
     free(pool->threads);
 }
 
-void thread_pool_destroy(thread_pool_t *pool) {
-    silent_on_err(pthread_mutex_lock(&pool->jobqueue_mutex));
-    pool->accepts_work = false;
-    silent_on_err(pthread_mutex_unlock(&pool->jobqueue_mutex));
-
-    silent_on_err(pthread_mutex_lock(&pool->jobs_to_do_mutex));
-    while(pool->jobs_to_do_counter > 0) {
-        silent_on_err(pthread_cond_wait(&pool->work_finished, &pool->jobs_to_do_mutex));
-    }
-    silent_on_err(pthread_mutex_unlock(&pool->jobs_to_do_mutex));
-
-    thread_pool_destroy_fast(pool);
-}
-
-int defer(struct thread_pool *pool, runnable_t runnable) {
+// Defers a job described by `runnable` to thread pool in `pool`
+// Returns error code, or 0 on success
+// If running a job encounters an error in pthreads, it silently ignores it
+int defer(thread_pool_t *pool, runnable_t runnable) {
     if (pool == NULL) {
         return NULL_POINTER_ERROR;
     }
 
-    return_on_err(pthread_mutex_lock(&pool->jobqueue_mutex));
-
-    if (!pool->accepts_work) {
-        return_on_err(pthread_mutex_unlock(&pool->jobqueue_mutex));
-        return CLOSED_POOL_ERROR;
-
-    } else {
-        // So that `runnable` doesn't fly away, we copy it to our own memory
-        // Thread that will take up this job will be responsible for the disposal of this allocation
-        runnable_t* runnable_ptr = (runnable_t*) calloc(1, sizeof(runnable_t));
-        if (runnable_ptr==NULL) {
-            return_on_err(pthread_mutex_unlock(&pool->jobqueue_mutex));
-            return MEMORY_ALLOCATION_ERROR;
-        }
-
-        *runnable_ptr = runnable;
-
-        int err = queue_push(pool->jobqueue, runnable_ptr);
-        if (err != 0) {
-            return err;
-        }
-        return_on_err(pthread_mutex_unlock(&pool->jobqueue_mutex));
+    return_on_err(pthread_mutex_lock(&pool->jobs_mutex));
+    // `runnable` must be moved from this scope's stack to some memory that will be still accessible
+    // when some thread eventually gets to work on it
+    runnable_t *runnable_ptr = (runnable_t *) calloc(1, sizeof(runnable_t));
+    if (runnable_ptr == NULL) {
+        return_on_err(pthread_mutex_unlock(&pool->jobs_mutex));
+        return MEMORY_ALLOCATION_ERROR;
     }
+    *runnable_ptr = runnable;
 
-    return_on_err(pthread_mutex_lock(&pool->jobs_to_do_mutex));
-    (pool->jobs_to_do_counter)++;
-    return_on_err(pthread_mutex_unlock(&pool->jobs_to_do_mutex));
+    // Put runnable into jobqueue
+    return_on_err(queue_push(pool->jobqueue, runnable_ptr));
 
+    // Signal threads waiting for work
     return_on_err(pthread_cond_signal(&pool->stg_to_do_cond));
 
+    return_on_err(pthread_mutex_unlock(&pool->jobs_mutex));
     return 0;
 }
