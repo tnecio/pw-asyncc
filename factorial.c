@@ -74,6 +74,9 @@ int main() {
 
     // Clean up
     thread_pool_destroy(&pool);
+    for (int i = 0; i < n - 1; i++) {
+        future_destroy(&futures[i]);
+    }
 
-    return 0; // TODO: memory leak of not-uninitialised futures – question sent
+    return 0;
 }
