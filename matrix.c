@@ -1,9 +1,6 @@
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wunknown-pragmas"
 #pragma ide diagnostic ignored "cert-err34-c"
-//
-// Created by tom on 06.12.19.
-//
 
 #include <stdio.h>
 #include <stdlib.h>

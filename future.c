@@ -20,6 +20,8 @@ int future_init(callable_t callable, future_t *future) {
     return 0;
 }
 
+// User might have a reference to the future and use it in `map` many times in many threads etc.
+// therefore we don't know when to clean up a future – it must be the user's responsibility
 // Destroys `future`
 // Silently ignores all errors
 void future_destroy(future_t *future) {
@@ -128,7 +130,7 @@ int map(thread_pool_t *pool, future_t *future, future_t *from, callable_function
     runnable.argsz = 2 * sizeof(future_t);
     runnable.function = map_work;
 
-    // Defering is last instruction; return its error code
+    // Deferring is last instruction; return its error code
     return defer(pool, runnable);
 }
 

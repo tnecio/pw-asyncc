@@ -1,7 +1,3 @@
-//
-// Created by tom on 06.12.19.
-//
-
 #ifndef _ERR_H_
 #define _ERR_H_
 
@@ -30,8 +26,5 @@ enum Pw2Error {
 
 // Silently ignore the error
 #define silent_on_err(stmt) stmt
-
-
-void failure(int error_number, const char *fmt, ...);
 
 #endif //_ERR_H_

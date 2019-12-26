@@ -1,6 +1,3 @@
-//
-// Created by tom on 06.12.19.
-//
 #include <stdio.h>
 
 #include "future.h"
