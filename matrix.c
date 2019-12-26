@@ -1,7 +1,3 @@
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunknown-pragmas"
-#pragma ide diagnostic ignored "cert-err34-c"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -69,4 +65,3 @@ int main() {
 
     return 0;
 }
-#pragma clang diagnostic pop
